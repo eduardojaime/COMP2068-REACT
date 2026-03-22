@@ -1,5 +1,97 @@
 # Week 11: JWT Authentication in MERN Stack
 
+## JWT Authentication Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         REGISTRATION FLOW                                │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Client                    Next.js                Express              MongoDB
+  │                         │                        │                   │
+  ├─── Register Form ──────>│                        │                   │
+  │    (username/password)  │                        │                   │
+  │                         ├─ POST /auth/register ─>│                   │
+  │                         │                        ├─ Hash password    │
+  │                         │                        ├─ Save user ──────>│
+  │                         │                        │<─ User created ───┤
+  │                         │<─── 201 Created ───────┤                   │
+  │<─── Success message ────┤                        │                   │
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           LOGIN FLOW                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Client                    Next.js                Express              MongoDB
+  │                         │                        │                   │
+  ├──── Login Form ────────>│                        │                   │
+  │   (username/password)   │                        │                   │
+  │                         ├── POST /auth/login ───>│                   │
+  │                         │                        ├─ Find user ──────>│
+  │                         │                        │<─ User data ──────┤
+  │                         │                        ├─ Verify password  │
+  │                         │                        ├─ Generate JWT     │
+  │                         │                        │   (sign with      │
+  │                         │                        │    secret key)    │
+  │                         │                        ├─ Set HTTP-only    │
+  │                         │                        │   cookie          │
+  │                         │<─ 200 OK + JWT cookie ─┤                   │
+  │<── Redirect to app ─────┤                        │                   │
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   ACCESSING PROTECTED ROUTES                             │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Client                    Next.js                Express              MongoDB
+  │                         │                        │                   │
+  ├─ Request data ─────────>│                        │                   │
+  │                         ├─ API call with cookie ─>│                   │
+  │                         │  (JWT auto-sent)       │                   │
+  │                         │                        ├─ verifyToken()    │
+  │                         │                        │   middleware      │
+  │                         │                        ├─ Extract JWT      │
+  │                         │                        │   from cookie     │
+  │                         │                        ├─ Verify signature │
+  │                         │                        │   & expiration    │
+  │                         │                        │                   │
+  │                         │         ┌──────────────┴──────────┐        │
+  │                         │         │                         │        │
+  │                         │      VALID?                    INVALID     │
+  │                         │         │                         │        │
+  │                         │         ├─ Decode user data       ├─ 401   │
+  │                         │         ├─ req.user = payload     │        │
+  │                         │         ├─ Process request ──────>│        │
+  │                         │         │<─────── Data ───────────┤        │
+  │                         │<────────┼─ 200 OK + data          │        │
+  │                         │<────────┴─────────────────────────┘        │
+  │<──── Display data ──────┤                        │                   │
+  │  OR redirect to login   │                        │                   │
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          LOGOUT FLOW                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Client                    Next.js                Express              
+  │                         │                        │                   
+  ├──── Logout button ─────>│                        │                   
+  │                         ├── GET /auth/logout ───>│                   
+  │                         │                        ├─ Clear cookie     
+  │                         │<────── 200 OK ─────────┤   (authToken='')  
+  │<─ Redirect to login ────┤                        │                   
+
+
+KEY COMPONENTS:
+===============
+• JWT Token: Signed JSON object containing {id, username, expiration}
+• HTTP-Only Cookie: Stores JWT, inaccessible to JavaScript (XSS protection)
+• verifyToken Middleware: Validates JWT on every protected route
+• Secret Key: Used to sign/verify tokens (stored in .env)
+• Stateless: No session storage needed, token contains all info
+```
+
 ## Prerequisites
 - Install required packages (BACKEND):
 ```bash
