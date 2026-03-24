@@ -161,9 +161,9 @@ interface User {
 }
 
 interface UserModel extends Model<User> {
-    createStrategy: () => anyany;
-    serializeUser: () => anyany;
-    deserializeUser:() => anyany;
+    createStrategy: () => any;
+    serializeUser: () => any;
+    deserializeUser:() => any;
 }
 
 const userSchema = new Schema<User>({
