@@ -156,14 +156,14 @@ import passportLocalMongoose from 'passport-local-mongoose';
 interface User {
     username: string;
     password: string;
-    setPassword(password: string): any;
-    authenticate(password: string): any;
+    setPassword: (password: string) => any;
+    authenticate: (password: string) => any;
 }
 
 interface UserModel extends Model<User> {
-    createStrategy(): any;
-    serializeUser(): any;
-    deserializeUser(): any;
+    createStrategy: () => anyany;
+    serializeUser: () => anyany;
+    deserializeUser:() => anyany;
 }
 
 const userSchema = new Schema<User>({
