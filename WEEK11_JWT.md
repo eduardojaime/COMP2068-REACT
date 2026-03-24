@@ -95,7 +95,12 @@ KEY COMPONENTS:
 ## Prerequisites
 - Install required packages (BACKEND):
 ```bash
-npm i passport passport-local passport-local-mongoose jsonwebtoken passport-jwt cookie-parser cors express-rate-limit helmet
+npm i passport mongoose passport-local passport-local-mongoose jsonwebtoken passport-jwt cookie-parser cors express-rate-limit helmet express-session
+```
+
+- Install dev dependencies (BACKEND):
+```bash
+npm i -D @types/cookie-parser @types/cors @types/express-session @types/mongodb @types/morgan @types/passport @types/passport-jwt @types/swagger-jsdoc @types/swagger-ui-express concurrently nodemon
 ```
 
 ### Part 1: Setting Up User Model and Passport
