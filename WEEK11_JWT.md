@@ -103,6 +103,40 @@ npm i passport mongoose passport-local passport-local-mongoose jsonwebtoken pass
 npm i -D @types/cookie-parser @types/cors @types/express-session @types/mongodb @types/morgan @types/passport @types/passport-jwt @types/swagger-jsdoc @types/swagger-ui-express concurrently nodemon
 ```
 
+#### Package Descriptions
+
+**Dependencies:**
+
+| Package | Purpose |
+|---------|---------|
+| `passport` | Authentication middleware for Node.js that provides flexible authentication strategies |
+| `mongoose` | MongoDB object modeling tool (ODM) for Node.js that provides schema-based data modeling |
+| `passport-local` | Passport strategy for authenticating with username and password credentials |
+| `passport-local-mongoose` | Mongoose plugin that simplifies building username/password authentication with Passport |
+| `jsonwebtoken` | Library for creating and verifying JSON Web Tokens (JWT) for stateless authentication |
+| `passport-jwt` | Passport strategy for authenticating with JWT tokens |
+| `cookie-parser` | Middleware to parse cookies from HTTP request headers |
+| `cors` | Middleware to enable Cross-Origin Resource Sharing (CORS) for frontend-backend communication |
+| `express-rate-limit` | Middleware for rate limiting API requests to prevent abuse and DDoS attacks |
+| `helmet` | Security middleware that sets various HTTP headers to protect against common vulnerabilities |
+| `express-session` | Session middleware for Express that manages user sessions |
+
+**Dev Dependencies:**
+
+| Package | Purpose |
+|---------|---------|
+| `@types/cookie-parser` | TypeScript type definitions for cookie-parser |
+| `@types/cors` | TypeScript type definitions for cors |
+| `@types/express-session` | TypeScript type definitions for express-session |
+| `@types/mongodb` | TypeScript type definitions for MongoDB |
+| `@types/morgan` | TypeScript type definitions for morgan (HTTP request logger) |
+| `@types/passport` | TypeScript type definitions for Passport |
+| `@types/passport-jwt` | TypeScript type definitions for passport-jwt |
+| `@types/swagger-jsdoc` | TypeScript type definitions for swagger-jsdoc |
+| `@types/swagger-ui-express` | TypeScript type definitions for swagger-ui-express |
+| `concurrently` | Utility to run multiple npm commands concurrently (watches TypeScript and runs nodemon) |
+| `nodemon` | Development tool that automatically restarts the server when file changes are detected |
+
 ### Part 1: Setting Up User Model and Passport
 
 #### Create User Model
