@@ -18,7 +18,7 @@ interface UserModel extends Model<User> {
 }
 
 // declare user schema
-const userSchema = new Schema<User>({
+const userSchema = new Schema({
     username: {
         type: String,
         required: [true, 'Username is required'],
@@ -33,7 +33,7 @@ const userSchema = new Schema<User>({
 });
 
 // inject plm into user schema, this includes the 5 methods defined in the interfaces above
-userSchema.plugin(passportLocalMongoose as any);
+userSchema.plugin(passportLocalMongoose.default);
 // create and export user model
 const User= mongoose.model<User, UserModel>('User', userSchema);
 export default User;

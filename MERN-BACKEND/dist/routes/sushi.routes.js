@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { collections } from "../services/database.service.js";
+import { verifyToken } from "../middlewares/auth.js";
 const router = Router();
 /**
  * @openapi
@@ -15,6 +16,9 @@ const router = Router();
 // router.get("/", (req: Request, res: Response) => {
 //   res.status(200).json(sushiMenu);
 // });
+// PATH + MIDDLEWARES (LIST)
+// Protect routes individually
+// router.get("/", verifyToken, async (_req: Request, res: Response) => {
 router.get("/", async (_req, res) => {
     try {
         if (!collections.sushiMenu) {

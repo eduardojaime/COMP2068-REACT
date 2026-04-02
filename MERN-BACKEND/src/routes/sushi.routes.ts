@@ -3,6 +3,8 @@ import { Router, type Request, type Response } from "express";
 import { ObjectId } from "mongodb";
 import { collections } from "../services/database.service.js";
 import type Sushi from "../models/sushi.js";
+ 
+import { verifyToken } from "../middlewares/auth.js";
 
 const router = Router();
 
@@ -19,7 +21,9 @@ const router = Router();
 // router.get("/", (req: Request, res: Response) => {
 //   res.status(200).json(sushiMenu);
 // });
-
+// PATH + MIDDLEWARES (LIST)
+// Protect routes individually
+// router.get("/", verifyToken, async (_req: Request, res: Response) => {
 router.get("/", async (_req: Request, res: Response) => {
   try {
     if (!collections.sushiMenu) {

@@ -1,42 +1,63 @@
 "use client";
 
 import { useState } from "react";
+import { useForm, SubmitHandler } from "react-hook-form";
+import { useAuth } from "@/app/context/AuthContext";
+import { useRouter } from "next/navigation";
 
-export default function LoginForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+interface LoginFormData {
+  username: string;
+  password: string;
+}
+export default function LoginPage() {
+  const [message, setMessage] = useState("");
+  const [messageClass, setMessageClass] = useState("");
+  const { login } = useAuth();
+  const router = useRouter();
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>();
 
-  const handleSubmit = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    console.log({ email, password });
-  };
+  const onSubmit: SubmitHandler<LoginFormData> = async (data) => {
+    try {
+      await login(data.username, data.password);
+      router.push("/sushi");
+    } catch (error) {
+      setMessage("Login failed. Please check your credentials.");
+      setMessageClass("alert alert-danger");
+    }
+  }
 
+  // Login Page HTML
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="max-w-sm mx-auto mt-10 p-6 border rounded"
-    >
-      <h2 className="text-xl font-bold mb-4">Login</h2>
+    <div className="container mt-4">
+      <h1>Login</h1>
+      <h5 className={messageClass}>{message}</h5>
 
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="w-full mb-3 p-2 border rounded"
-      />
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <div className="mb-3">
+          <label htmlFor="username" className="form-label">Username</label>
+          <input
+            type="text"
+            className="form-control"
+            id="username"
+            {...register('username', { required: 'Username is required' })}
+          />
+          {errors.username && <span className="text-danger">{errors.username.message}</span>}
+        </div>
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="w-full mb-4 p-2 border rounded"
-      />
+        <div className="mb-3">
+          <label htmlFor="password" className="form-label">Password</label>
+          <input
+            type="password"
+            className="form-control"
+            id="password"
+            {...register('password', { required: 'Password is required' })}
+          />
+          {errors.password && <span className="text-danger">{errors.password.message}</span>}
+        </div>
 
-      <button className="w-full bg-green-600 text-white p-2 rounded">
-        Login
-      </button>
-    </form>
+        <button type="submit" className="btn btn-primary">Login</button>
+      </form>
+    </div>
   );
+
 }

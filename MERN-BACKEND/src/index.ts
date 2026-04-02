@@ -1,5 +1,6 @@
 import express from "express";
 import sushiRouter from "./routes/sushi.routes.js";
+import userRouter from "./routes/users.routes.js";
 import { connectToDatabase } from "./services/database.service.js";
 import morgan from "morgan";
 // Swagger setup
@@ -14,6 +15,9 @@ import cors from "cors";
 import User from "./models/user.js";
 // API calls from Frontend after user logs in (JWT token in header)
 import { Strategy as JwtStrategy, ExtractJwt } from "passport-jwt";
+// Protect routes with JWT token verification
+import { verifyToken } from "./middlewares/auth.js";
+
 
 const app = express();
 const port = 4000;
@@ -77,7 +81,9 @@ passport.use(jwtStrategy);
 
 connectToDatabase()
   .then(() => {
-    app.use("/api/sushi", sushiRouter);
+    // Protects all sushi routes with JWT token verification middleware, user must be logged in and provide a valid token to access any sushi route
+    app.use("/api/sushi", verifyToken, sushiRouter);
+    app.use("/api/users", userRouter);
 
     app.listen(port, () => {
       console.log(`Server started at http://localhost:${port}`);
