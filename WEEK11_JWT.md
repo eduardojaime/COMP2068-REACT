@@ -549,7 +549,7 @@ app.use(
 );
 ```
 
-### Part 6: Frontend Integration (Next.js)
+### Next Steps Frontend Integration (WEEK 12)
 
 #### Create Auth Context
 - In MERN-FRONTEND/app/context/
