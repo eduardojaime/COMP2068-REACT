@@ -31,7 +31,6 @@ npm i react-hook-form
 import { createContext, useContext, useState, ReactNode } from 'react';
 
 interface User {
-    id: string;
     username: string;
 }
 
@@ -51,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = async (username: string, password: string): Promise<void> => {
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/users/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include', // Important: sends cookies
@@ -63,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             const data = await res.json();
-            setUser({ id: data.id, username: username });
+            // Backend returns { message, token } but not username, so use the parameter
+            setUser({ username: username });
         } catch (error) {
             throw error;
         }
@@ -71,8 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const logout = async (): Promise<void> => {
         try {
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/logout`, {
-                method: 'GET',
+            await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/users/logout`, {
+                method: 'POST',
                 credentials: 'include',
             });
             setUser(null);
@@ -126,10 +126,19 @@ export default function RootLayout({
 
 #### Configure Environment Variables
 - In MERN-FRONTEND/.env.local
-    - Add NEXT_PUBLIC_API_URL pointing to your backend
+    - Add NEXT_PUBLIC_SERVER_URL pointing to your backend (for API routes)
+    - Add NEXT_PUBLIC_CLIENT_URL pointing to your frontend (for page navigation)
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_SERVER_URL=http://localhost:4000
+NEXT_PUBLIC_CLIENT_URL=http://localhost:3000
+```
+
+- In MERN-BACKEND/.env
+    - Add CLIENT_URL for CORS configuration
+
+```env
+CLIENT_URL=http://localhost:3000
 ```
 
 ### Part 2: Implementing Register Functionality
@@ -182,7 +191,7 @@ export default function RegisterPage() {
         }
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/users/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -469,295 +478,257 @@ export default function Navbar() {
 }
 ```
 
-### Part 6: Protecting Create/Update/Delete Operations
+### Part 6: Protecting Backend Routes
 
-#### Update Backend Logout Handler
-- In MERN-BACKEND/src/controllers/usersController.ts
-    - Modify clearTokenCookie for local development
-    - Set secure to false for localhost testing
-    - Add path: '/' option
-    - Use both cookie modification and clearCookie methods
+#### Important: Public vs Protected Routes
+- **Public Routes (no auth)**: GET operations for viewing data
+- **Protected Routes (require auth)**: POST, PUT, DELETE operations
+
+#### Backend Route Protection
+In your backend sushi routes, apply `verifyToken` middleware **only** to POST, PUT, and DELETE:
 
 ```typescript
+// routes/sushi.routes.ts
+import { Router } from "express";
+import { verifyToken } from "../middlewares/auth";
+
+const router = Router();
+
+// Public - no authentication required
+router.get("/", async (req, res) => {
+  // Get all sushi
+});
+
+router.get("/:id", async (req, res) => {
+  // Get sushi by ID
+});
+
+// Protected - authentication required
+router.post("/", verifyToken, async (req, res) => {
+  // Create sushi
+});
+
+router.put("/:id", verifyToken, async (req, res) => {
+  // Update sushi
+});
+
+router.delete("/:id", verifyToken, async (req, res) => {
+  // Delete sushi
+});
+```
+
+#### Update Backend Cookie Configuration
+In MERN-BACKEND/src/controllers/users.controller.ts:
+
+```typescript
+const setTokenCookie = (res: Response, token: string): void => {
+    res.cookie("authToken", token, {
+        httpOnly: true,
+        secure: false, // Set to false for local development
+        sameSite: "lax", // "lax" works with http://localhost
+        path: '/',
+    })
+}
+
 const clearTokenCookie = (res: Response): void => {
     res.cookie('authToken', '', {
         httpOnly: true,
-        secure: false, // Set to false for local development
+        secure: false,
         path: '/',
         expires: new Date(0),
     });
-    
     res.clearCookie('authToken', { path: '/' });
-};
+}
 ```
 
-#### Secure Create Operation (POST)
-- In your sushi controller or component making API calls
-    - Import verifyToken middleware (already created in Week 11)
-    - Apply to POST route in backend
-    - In frontend component:
-        - Add credentials: 'include' to fetch options
-        - Handle 401 errors (redirect to login)
-        - Check if user is authenticated before showing create form
+#### Update Backend CORS Configuration
+In MERN-BACKEND/src/index.ts:
 
-**Backend (already done in Week 11):**
 ```typescript
-// routes/sushi.routes.ts
-import { verifyToken } from '../middleware/auth';
-
-router.post('/', verifyToken, async (req: Request, res: Response) => {
-    // Create logic
-});
+app.use(cors({
+  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  methods: ["OPTIONS", "GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+  exposedHeaders: ["Set-Cookie"],
+}));
 ```
 
-**Frontend Component:**
+### Part 7: Setting Up Next.js API Routes with Cookie Forwarding
+
+#### Understanding the Cookie Flow
+In Next.js with App Router, API routes run server-side. When a browser makes a request to a Next.js API route, the cookie is available, but when that API route calls your Express backend, the cookie is NOT automatically forwarded. You must manually extract and forward it.
+
+**Flow:**
+1. Browser → Next.js API Route (cookie available via `cookies()`)
+2. Next.js API Route → Express Backend (must manually forward cookie in headers)
+3. Express Backend verifies cookie/token
+
+#### Create API Route: app/api/sushi/route.ts
+
 ```typescript
-// app/sushi/create/page.tsx
-'use client';
+import { cookies } from 'next/headers';
 
-import { useAuth } from '@/app/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+// GET all sushi (public - no auth required)
+export async function GET() {
+  const res: Response = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi`,
+  );
+  return Response.json(await res.json());
+}
 
-export default function CreateSushiPage() {
-    const { user } = useAuth();
-    const router = useRouter();
-    const { register, handleSubmit } = useForm();
+// POST new sushi (protected - requires auth)
+export async function POST(req: Request) {
+  // Get cookies from the incoming request
+  const cookieStore = await cookies();
+  const authToken = cookieStore.get('authToken');
+  
+  const body = await req.json();
 
-    // Redirect if not authenticated
-    if (!user) {
-        router.push('/auth/login');
-        return <p>Redirecting to login...</p>;
-    }
+  const res: Response = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi`,
+    {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        // Forward the cookie to the backend
+        ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+      },
+      credentials: "include",
+      body: JSON.stringify(body),
+    },
+  );
 
-    const onSubmit = async (data: any) => {
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sushi`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include', // Important: includes auth cookie
-                body: JSON.stringify(data),
-            });
+  if (!res.ok) {
+    const errorText = await res.text();
+    return new Response(errorText, { status: res.status });
+  }
 
-            if (res.status === 401) {
-                router.push('/auth/login');
-                return;
-            }
+  return Response.json({ success: true });
+}
+```
 
-            if (!res.ok) {
-                throw new Error('Failed to create sushi');
-            }
+#### Create API Route: app/api/sushi/[id]/route.ts
 
-            router.push('/sushi');
-        } catch (error) {
-            console.error('Create failed:', error);
-        }
-    };
+```typescript
+import { cookies } from 'next/headers';
 
-    return (
-        <div className="container mt-4">
-            <h1>Create New Sushi Item</h1>
-            <form onSubmit={handleSubmit(onSubmit)}>
-                {/* Form fields */}
-            </form>
-        </div>
+// GET single sushi by ID (public - no auth required)
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const res: Response = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi/${id}`,
+  );
+
+  if (!res.ok) throw new Error("Failed to fetch sushi");
+
+  return Response.json(await res.json());
+}
+
+// DELETE sushi by ID (protected - requires auth)
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const cookieStore = await cookies();
+  const authToken = cookieStore.get('authToken');
+  
+  const { id } = await params;
+
+  const res: Response = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi/${id}`,
+    { 
+      method: "DELETE",
+      headers: {
+        ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+      },
+      credentials: "include",
+    },
+  );
+
+  if (!res.ok) throw new Error("Failed to delete sushi");
+
+  return new Response(null, { status: 204 });
+}
+
+// PUT update sushi by ID (protected - requires auth)
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const cookieStore = await cookies();
+  const authToken = cookieStore.get('authToken');
+  
+  const { id } = await params;
+  const body = await req.json();
+
+  const res: Response = await fetch(
+    `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi/${id}`,
+    {
+      method: "PUT",
+      headers: { 
+        "Content-Type": "application/json",
+        ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+      },
+      credentials: "include",
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!res.ok) throw new Error("Failed to update sushi");
+  return new Response(null, { status: 204 });
+}
+```
+
+#### Create API Route: app/api/sushi/create/route.ts
+
+```typescript
+import { cookies } from 'next/headers';
+
+export async function POST(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const authToken = cookieStore.get('authToken');
+    
+    const body = await req.json();
+
+    const res: Response = await fetch(
+      `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+        },
+        credentials: "include",
+        body: JSON.stringify(body),
+      },
     );
-}
-```
 
-#### Secure Delete Operation with User Ownership Check
-- In MERN-BACKEND sushi controller
-    - Modify DELETE route to check JWT token
-    - Verify token exists and is valid
-    - Find the resource by ID
-    - Check if resource belongs to current user (if your sushi model has username field)
-    - Return 403 Forbidden if user doesn't own the resource
-    - Return 404 if resource not found
-    - Delete only if all checks pass
-
-```typescript
-// Backend example (adapt to your sushi model)
-router.delete('/:id', verifyToken, async (req: Request, res: Response) => {
-    try {
-        const sushi = await Sushi.findById(req.params.id);
-
-        if (!sushi) {
-            return res.status(404).json({ msg: 'Sushi item not found' });
-        }
-
-        // If your sushi model tracks who created it
-        // if (sushi.username !== req.user?.username) {
-        //     return res.status(403).json({ msg: 'Unauthorized' });
-        // }
-
-        await Sushi.findByIdAndDelete(req.params.id);
-        return res.status(204).json({});
-    } catch (err) {
-        return res.status(500).json(err);
+    if (!res.ok) {
+      return Response.json(
+        { message: "Failed to create sushi on server" },
+        { status: res.status },
+      );
     }
-});
-```
 
-**Frontend Delete Component:**
-```typescript
-// app/components/deleteSushiButton.tsx
-'use client';
-
-import { useRouter } from 'next/navigation';
-
-interface DeleteSushiButtonProps {
-    id: string;
-}
-
-export default function DeleteSushiButton({ id }: DeleteSushiButtonProps) {
-    const router = useRouter();
-
-    const handleDelete = async () => {
-        if (!confirm('Are you sure you want to delete this sushi item?')) {
-            return;
-        }
-
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sushi/${id}`, {
-                method: 'DELETE',
-                credentials: 'include', // Include auth cookie
-            });
-
-            if (res.status === 401) {
-                router.push('/auth/login');
-                return;
-            }
-
-            if (res.status === 403) {
-                alert('You are not authorized to delete this item');
-                return;
-            }
-
-            if (!res.ok) {
-                throw new Error('Delete failed');
-            }
-
-            // Refresh the page or redirect
-            router.refresh();
-        } catch (error) {
-            console.error('Delete failed:', error);
-            alert('Failed to delete item');
-        }
-    };
-
-    return (
-        <button onClick={handleDelete} className="btn btn-danger">
-            Delete
-        </button>
+    const data = await res.json();
+    return Response.json(data);
+  } catch (error) {
+    console.error("Create error:", error);
+    return Response.json(
+      { message: "Internal server error" },
+      { status: 500 }
     );
+  }
 }
 ```
 
-#### Secure Update Operation with User Ownership Check
-- In MERN-BACKEND sushi controller
-    - Modify PUT route to check JWT token
-    - Verify token exists and is valid
-    - Find resource by ID
-    - Check resource ownership (if applicable)
-    - Return 403 if user doesn't own resource
-    - Update only if authorized
-
-```typescript
-// Backend PUT route
-router.put('/:id', verifyToken, async (req: Request, res: Response) => {
-    try {
-        const sushi = await Sushi.findById(req.params.id);
-
-        if (!sushi) {
-            return res.status(404).json({ msg: 'Sushi item not found' });
-        }
-
-        // If your sushi model tracks who created it
-        // if (sushi.username !== req.user?.username) {
-        //     return res.status(403).json({ msg: 'Unauthorized' });
-        // }
-
-        await Sushi.findByIdAndUpdate(req.params.id, req.body);
-        return res.status(202).json(sushi);
-    } catch (err) {
-        return res.status(500).json(err);
-    }
-});
-```
-
-**Frontend Update Component:**
-```typescript
-// app/sushi/edit/[id]/page.tsx
-'use client';
-
-import { useAuth } from '@/app/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { useEffect } from 'react';
-
-export default function EditSushiPage({ params }: { params: { id: string } }) {
-    const { user } = useAuth();
-    const router = useRouter();
-    const { register, handleSubmit, setValue } = useForm();
-
-    // Redirect if not authenticated
-    if (!user) {
-        router.push('/auth/login');
-        return <p>Redirecting to login...</p>;
-    }
-
-    // Load existing data
-    useEffect(() => {
-        const loadSushi = async () => {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sushi/${params.id}`);
-            const data = await res.json();
-            setValue('name', data.name);
-            setValue('price', data.price);
-        };
-        loadSushi();
-    }, [params.id, setValue]);
-
-    const onSubmit = async (data: any) => {
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sushi/${params.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include', // Include auth cookie
-                body: JSON.stringify(data),
-            });
-
-            if (res.status === 401) {
-                router.push('/auth/login');
-                return;
-            }
-
-            if (res.status === 403) {
-                alert('You are not authorized to edit this item');
-                return;
-            }
-
-            if (!res.ok) {
-                throw new Error('Update failed');
-            }
-
-            router.push('/sushi');
-        } catch (error) {
-            console.error('Update failed:', error);
-        }
-    };
-
-    return (
-        <div className="container mt-4">
-            <h1>Edit Sushi Item</h1>
-            <form onSubmit={handleSubmit(onSubmit)}>
-                {/* Form fields */}
-            </form>
-        </div>
-    );
-}
-```
-
-### Part 7: Conditional UI Rendering Based on Auth State
+### Part 8: Conditional UI Rendering Based on Auth State
 
 #### Hide Create Button from Anonymous Users
 - In your sushi list page
@@ -796,35 +767,169 @@ export default function SushiListPage() {
 
 ### Testing Checklist
 
+**Authentication Flow:**
 - [ ] Register creates new user and shows success message
-- [ ] Login with valid credentials succeeds and redirects
+- [ ] Login with valid credentials succeeds and redirects to /sushi
 - [ ] Login with invalid credentials shows error message
 - [ ] Navbar shows Register/Login when logged out
-- [ ] Navbar shows username and Logout when logged in
+- [ ] Navbar shows username when logged in
 - [ ] Logout clears user state and redirects to home
 - [ ] Logout clears auth cookie on backend
-- [ ] Create form is hidden from anonymous users
-- [ ] Create operation requires authentication (401 without token)
-- [ ] Edit operation requires authentication
-- [ ] Delete operation requires authentication
-- [ ] Delete shows confirmation dialog
-- [ ] All protected API calls include credentials: 'include'
-- [ ] Unauthorized users are redirected to login page
-- [ ] Auth state persists correctly across page navigation
+
+**Cookie Management:**
+- [ ] AuthToken cookie appears in browser DevTools after login
+- [ ] Cookie has correct settings (httpOnly, path: '/', sameSite: 'lax')
+- [ ] Cookie is cleared after logout
+
+**Route Protection:**
+- [ ] GET /api/sushi works without authentication (public)
+- [ ] GET /api/sushi/:id works without authentication (public)
+- [ ] POST /api/sushi requires authentication (protected)
+- [ ] PUT /api/sushi/:id requires authentication (protected)
+- [ ] DELETE /api/sushi/:id requires authentication (protected)
+- [ ] 401 error returned when accessing protected routes without auth
+
+**Frontend Integration:**
+- [ ] Next.js API routes forward cookies to Express backend
+- [ ] Create button hidden from anonymous users
+- [ ] Edit/Delete buttons hidden from anonymous users
+- [ ] Unauthorized requests redirect to login page
+- [ ] Delete shows confirmation dialog before action
+
+**Cross-Origin:**
+- [ ] No CORS errors in browser console
+- [ ] Credentials properly sent cross-origin (localhost:3000 → localhost:4000)
+- [ ] Set-Cookie headers received from backend
 
 ### Important Notes
 
 #### Cookie Configuration for Local Development
 - Set `secure: false` in cookie options for localhost
+- Set `sameSite: "lax"` for local development (use "none" only with HTTPS/production)
 - Add `path: '/'` to ensure cookie is sent with all requests
 - Production should use `secure: true` with HTTPS
 
+**Backend Cookie Settings:**
+```typescript
+const setTokenCookie = (res: Response, token: string): void => {
+    res.cookie("authToken", token, {
+        httpOnly: true,
+        secure: false, // Set to false for local development
+        sameSite: "lax", // "lax" works with http://localhost
+        path: '/',
+    })
+}
+```
+
 #### CORS Configuration
 - Backend must allow credentials
+- Backend must include "Cookie" in allowedHeaders
 - Frontend must include `credentials: 'include'` in all authenticated requests
 - Origin must match exactly (no wildcards with credentials)
+
+**Backend CORS Setup:**
+```typescript
+app.use(cors({
+  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  methods: ["OPTIONS", "GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+  exposedHeaders: ["Set-Cookie"],
+}));
+```
+
+#### Next.js Cookie Forwarding (Critical!)
+Since Next.js API routes run server-side, they don't automatically forward browser cookies to your Express backend. You must manually extract and forward cookies in each protected API route.
+
+**Import cookies helper:**
+```typescript
+import { cookies } from 'next/headers';
+```
+
+**Forward cookies in API routes:**
+```typescript
+export async function POST(req: Request) {
+  // Get cookies from the incoming request
+  const cookieStore = await cookies();
+  const authToken = cookieStore.get('authToken');
+  
+  const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi`, {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      // Forward the cookie to the backend
+      ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+    },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+}
+```
+
+Apply this pattern to all API routes that need authentication (POST, PUT, DELETE operations).
 
 #### User Ownership
 - If implementing user-specific resources, add `username` field to your models
 - Compare `req.user.username` (from JWT) with resource owner
 - Return 403 Forbidden for unauthorized access attempts
+
+### Common Issues and Solutions
+
+#### Issue: "Token is undefined" in backend
+**Cause**: Cookies not being forwarded from Next.js API routes to Express backend  
+**Solution**: Import and use `cookies()` from 'next/headers' in all protected API routes, and forward the authToken in the Cookie header
+
+#### Issue: Cookie not being set after login
+**Cause**: `sameSite: "none"` requires `secure: true` (HTTPS only)  
+**Solution**: Use `sameSite: "lax"` with `secure: false` for local development
+
+#### Issue: CORS errors when sending cookies
+**Cause**: Missing Cookie in allowedHeaders or credentials not enabled  
+**Solution**: 
+- Backend: Add "Cookie" to allowedHeaders in CORS config
+- Frontend: Include `credentials: "include"` in all fetch requests
+
+#### Issue: "sushi.map is not a function" 
+**Cause**: API returns error object instead of array when authentication fails  
+**Solution**: Ensure GET routes are not protected with verifyToken (they should be public)
+
+#### Issue: Mongoose timeout/connection errors
+**Cause**: Mongoose not connected when using User model  
+**Solution**: Ensure Mongoose connection is established in database service:
+```typescript
+await mongoose.connect(`${connString}${dbName}`);
+```
+
+### Architecture Summary
+
+#### Complete Cookie Flow
+1. **User logs in** → Express backend generates JWT and sets httpOnly cookie
+2. **Cookie stored** in browser for frontend domain (localhost:3000)
+3. **Browser makes request** to Next.js API route with cookie
+4. **Next.js API route** extracts cookie using `cookies()` helper
+5. **Cookie forwarded** to Express backend in fetch headers
+6. **Express backend** verifies JWT from cookie and processes request
+
+#### Key Technologies
+- **Frontend**: Next.js 13+ (App Router), React Context API, TailwindCSS
+- **Backend**: Express.js, Passport.js, JWT, Mongoose
+- **Authentication**: HTTP-only cookies, JWT tokens
+- **Database**: MongoDB (Mongoose for users, native driver for sushi)
+
+#### Security Features
+- ✅ Passwords hashed with passport-local-mongoose
+- ✅ JWT tokens stored in httpOnly cookies (not localStorage)
+- ✅ CORS properly configured for cross-origin cookie handling
+- ✅ Route-level authorization on backend
+- ✅ Protected operations require valid JWT token
+
+#### Development vs Production
+**Development (localhost):**
+- `secure: false`
+- `sameSite: "lax"`
+- Separate ports (3000 frontend, 4000 backend)
+
+**Production:**
+- `secure: true` (HTTPS required)
+- `sameSite: "strict"` or `"lax"`
+- Same domain or proper CORS configuration

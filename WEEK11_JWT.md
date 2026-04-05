@@ -587,9 +587,14 @@ app.use(
     - Backend will verify JWT from cookie
 
 ```typescript
+// Get cookies from the incoming request
+const cookieStore = await cookies();
+const authToken = cookieStore.get('authToken');
 fetch('http://localhost:5000/api/sushi', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json',
+        ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+      },
     credentials: 'include', // Important!
     body: JSON.stringify(data)
 });
