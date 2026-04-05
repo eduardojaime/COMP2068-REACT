@@ -12,6 +12,7 @@ declare global {
 // Middleware to verify JWT token and continue processing the request if valid, otherwise return an error response
 export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
     const token: string = req.cookies?.authToken;
+    console.log("Verifying token:", token);
     if (!token) {
         return res.status(401).json({ message: "Unauthorized Access" });
     }

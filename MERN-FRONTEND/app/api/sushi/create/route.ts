@@ -1,6 +1,12 @@
 // POST: /api/sushi => create new sushi
+import { cookies } from 'next/headers';
+
 export async function POST(req: Request) {
   try {
+    // Get cookies from the incoming request
+    const cookieStore = await cookies();
+    const authToken = cookieStore.get('authToken');
+    
     // 1. Read the data sent from the frontend form
     const body = await req.json();
 
@@ -11,7 +17,10 @@ export async function POST(req: Request) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          // Forward the cookie to the backend
+          ...(authToken && { Cookie: `authToken=${authToken.value}` }),
         },
+        credentials: "include", // Send auth cookie
         body: JSON.stringify(body),
       },
     );

@@ -43,9 +43,10 @@ app.use(cookieParser());
 // configure CORS to allow credentials
 app.use(cors({
   origin: process.env.CLIENT_URL || "http://localhost:3000",
-  methods: "GET,POST,PUT,DELETE",
+  methods: ["OPTIONS", "GET", "POST", "PUT", "DELETE"],
   credentials: true, // allow cookies to be sent
-  allowedHeaders: "Content-Type,Authorization",
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+  exposedHeaders: ["Set-Cookie"],
 }));
 // Session and Base Passport Configuration
 app.use(session({
@@ -82,7 +83,7 @@ passport.use(jwtStrategy);
 connectToDatabase()
   .then(() => {
     // Protects all sushi routes with JWT token verification middleware, user must be logged in and provide a valid token to access any sushi route
-    app.use("/api/sushi", verifyToken, sushiRouter);
+    app.use("/api/sushi", sushiRouter);
     app.use("/api/users", userRouter);
 
     app.listen(port, () => {

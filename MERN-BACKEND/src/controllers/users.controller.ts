@@ -73,11 +73,18 @@ const generateToken = (user: User): string => {
 const setTokenCookie = (res: Response, token: string): void => {
     res.cookie("authToken", token, {
         httpOnly: true, // cookie cannot be accessed by client-side JavaScript, helps prevent XSS attacks
-        secure: true, // cookie will only be sent over HTTPS, helps prevent highjacking attacks
-        sameSite: "none", // allow cookie to be sent cross-site (from frontend to backend) 
+        secure: false, // Set to false for local development (http://localhost), use true in production with HTTPS
+        sameSite: "lax", // "lax" works with http://localhost; "none" requires secure: true (HTTPS)
+        path: '/', // ensure cookie is sent with all requests
     })
 }   
 // clearTokenCookie
 const clearTokenCookie = (res: Response): void => {
-    res.clearCookie("authToken");
+    res.cookie('authToken', '', {
+        httpOnly: true,
+        secure: false, // Set to false for local development
+        path: '/',
+        expires: new Date(0),
+    });
+    res.clearCookie('authToken', { path: '/' });
 }

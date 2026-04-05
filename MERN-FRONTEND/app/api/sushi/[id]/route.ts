@@ -1,4 +1,6 @@
 // GET: /api/sushi/:id => fetch single sushi
+import { cookies } from 'next/headers';
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -23,13 +25,24 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Get cookies from the incoming request
+  const cookieStore = await cookies();
+  const authToken = cookieStore.get('authToken');
+  
   // read id from url params
   const { id } = await params;
 
   // call delete with id on server api
   const res: Response = await fetch(
     `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi/${id}`,
-    { method: "DELETE" },
+    { 
+      method: "DELETE",
+      headers: {
+        // Forward the cookie to the backend
+        ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+      },
+      credentials: "include", // Send auth cookie
+    },
   );
 
   // error handle
@@ -43,6 +56,9 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Get cookies from the incoming request
+  const cookieStore = await cookies();
+  const authToken = cookieStore.get('authToken');
   // read id from url params
   const { id } = await params;
 
@@ -55,7 +71,11 @@ export async function PUT(
     `${process.env.NEXT_PUBLIC_SERVER_URL}/api/sushi/${id}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json",
+        // Forward the cookie to the backend
+        ...(authToken && { Cookie: `authToken=${authToken.value}` }),
+      },
+      credentials: "include", // Send auth cookie
       body: JSON.stringify(body),
     },
   );

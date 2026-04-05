@@ -142,7 +142,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 //   res.status(201).json(newSushi);
 // });
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", verifyToken, async (req: Request, res: Response) => {
   try {
     const newSushi = req.body as Sushi;
     if (!collections.sushiMenu) {
@@ -211,7 +211,7 @@ router.post("/", async (req: Request, res: Response) => {
 //   res.status(200).json(sushi);
 // });
 
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", verifyToken, async (req: Request, res: Response) => {
   const id = req?.params?.id;
 
   try {
@@ -269,7 +269,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 //   res.status(204).send();
 // });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", verifyToken, async (req: Request, res: Response) => {
   const id = req?.params?.id;
 
   try {

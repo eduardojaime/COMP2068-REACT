@@ -37,7 +37,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             const data = await res.json();
-            setUser({ username: data.username });
+            // Backend returns { message, token } but not username, so use the parameter
+            setUser({ username: username });
         } catch (error) {
             console.error('Login failed:', error);
             throw error;
