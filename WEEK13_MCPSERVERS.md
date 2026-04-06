@@ -1173,6 +1173,7 @@ try {
 - **TypeScript SDK**: [https://github.com/modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)
 - **SDK Documentation**: [https://modelcontextprotocol.io/docs/sdk](https://modelcontextprotocol.io/docs/sdk)
 - **API Reference**: [https://ts.sdk.modelcontextprotocol.io/](https://ts.sdk.modelcontextprotocol.io/)
+- **IBM Technology Channel**: [https://www.youtube.com/@IBMTechnology](https://www.youtube.com/@IBMTechnology)
 
 ### Community & Examples
 - **Example Servers**: [https://github.com/modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers)
