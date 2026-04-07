@@ -1,5 +1,17 @@
 # Week 13: Agentic AI and Model Context Protocol (MCP)
 
+> **📦 Package Note**: This guide uses `@modelcontextprotocol/sdk` which provides the complete MCP implementation including server, transport layers, and utilities. The SDK is the recommended approach for new projects and includes:
+> - `McpServer` for creating MCP servers
+> - Multiple transport options (stdio, HTTP/SSE, Express integration)  
+> - Type-safe tool registration with `registerTool()`
+> - Full TypeScript support with `.js` extension imports (ESM modules)
+>
+> **Key Differences from `@modelcontextprotocol/server`:**
+> - Import paths include `.js` extensions (e.g., `from "@modelcontextprotocol/sdk/server/mcp.js"`)
+> - Tools use `server.registerTool(name, schema, handler)` instead of `server.addTool()`
+> - Built-in Express integration via `createMcpExpressApp()`
+> - Requires `@cfworker/json-schema` dependency for schema validation
+
 ## Agentic Workflow Diagram
 
 ```
@@ -149,23 +161,30 @@ An **MCP Server** exposes functionality to AI agents through three main primitiv
 #### **Tools**: Functions agents can execute
 
 ```typescript
-server.addTool({
-  name: "get_sushi_menu",
-  description: "Retrieves the current sushi menu with prices",
-  inputSchema: z.object({
-    category: z.enum(["rolls", "sashimi", "nigiri"]).optional(),
-    max_price: z.number().optional()
-  }),
-  handler: async ({ category, max_price }) => {
+server.registerTool(
+  "get_sushi_menu",
+  {
+    title: "Get Sushi Menu",
+    description: "Retrieves the current sushi menu with prices",
+    inputSchema: z.object({
+      category: z.enum(["rolls", "sashimi", "nigiri"]).optional(),
+      max_price: z.number().optional()
+    })
+  },
+  async ({ category, max_price }): Promise<CallToolResult> => {
     // Query database and return results
-    return { menu: [...] };
+    return { 
+      content: [{ type: "text", text: JSON.stringify({ menu: [...] }) }]
+    };
   }
-});
+);
 ```
 
 **Examples**: Database queries, API calls, file operations, calculations
 
 #### **Resources**: Data sources agents can read
+
+> **Note**: The MCP SDK primarily focuses on tools. Resources and prompts may have different APIs or limited support depending on your SDK version. Check the latest documentation for resource registration.
 
 ```typescript
 server.addResource({
@@ -182,6 +201,8 @@ server.addResource({
 **Examples**: Files, database records, configuration data, documentation
 
 #### **Prompts**: Reusable prompt templates
+
+> **Note**: Prompts are typically used with specific MCP clients. The SDK's support for prompts may vary.
 
 ```typescript
 server.addPrompt({
@@ -247,8 +268,8 @@ cd TS-MCPSERVER
 
 # Initialize a new TypeScript project
 npm init -y
-npm install @modelcontextprotocol/server zod
-npm install -D @types/node tsx typescript
+npm install @modelcontextprotocol/sdk @cfworker/json-schema zod
+npm install -D @types/node @types/express tsx typescript concurrently nodemon rimraf
 ```
 
 ### Basic MCP Server Structure
@@ -256,45 +277,45 @@ npm install -D @types/node tsx typescript
 **File: `src/index.ts`**
 
 ```typescript
-import { MCPServer } from "@modelcontextprotocol/server";
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 // Create MCP server instance
-const server = new MCPServer({
+const server = new McpServer({
   name: "sushi-restaurant-server",
   version: "1.0.0",
   description: "MCP server for managing sushi restaurant operations"
 });
 
-// Add a simple tool
-server.addTool({
-  name: "get_menu",
-  description: "Get the sushi restaurant menu",
-  inputSchema: z.object({}),
-  handler: async () => {
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            rolls: [
-              { name: "California Roll", price: 8.99 },
-              { name: "Dragon Roll", price: 12.99 },
-              { name: "Rainbow Roll", price: 14.99 }
-            ]
-          })
-        }
+// Add a simple tool using registerTool
+server.registerTool(
+  "get_menu",
+  {
+    title: "Get Menu",
+    description: "Get the sushi restaurant menu",
+    inputSchema: z.object({}), // No input parameters
+  },
+  async ({}): Promise<CallToolResult> => {
+    const menu = {
+      rolls: [
+        { name: "California Roll", price: 8.99 },
+        { name: "Dragon Roll", price: 12.99 },
+        { name: "Rainbow Roll", price: 14.99 }
       ]
     };
+    return {
+      content: [{ type: "text", text: JSON.stringify(menu) }]
+    };
   }
-});
+);
 
-// Start the server with stdio transport
-const transport = new StdioServerTransport();
-await server.connect(transport);
+// For stdio transport (VS Code, Claude Desktop):
+// import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+// const transport = new StdioServerTransport();
+// await server.connect(transport);
 
-console.error("Sushi Restaurant MCP Server running on stdio");
+console.error("Sushi Restaurant MCP Server running");
 ```
 
 ### Schema Validation with Zod
@@ -303,6 +324,7 @@ MCP uses [Standard Schema](https://standardschema.dev/) for type-safe input vali
 
 ```typescript
 import { z } from "zod";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 // Define input schema
 const AddOrderSchema = z.object({
@@ -314,17 +336,103 @@ const AddOrderSchema = z.object({
   delivery_address: z.string().optional()
 });
 
-server.addTool({
-  name: "create_order",
-  description: "Creates a new sushi order",
-  inputSchema: AddOrderSchema,
-  handler: async ({ customer_id, items, delivery_address }) => {
+server.registerTool(
+  "create_order",
+  {
+    title: "Create Order",
+    description: "Creates a new sushi order",
+    inputSchema: AddOrderSchema
+  },
+  async ({ customer_id, items, delivery_address }): Promise<CallToolResult> => {
     // TypeScript knows the types here!
     // Insert order into MongoDB
     // Send confirmation email
-    return { order_id: "...", status: "confirmed" };
+    const result = { order_id: "...", status: "confirmed" };
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
   }
+);
+```
+
+### Using HTTP/Express Transport
+
+For production deployments or remote access, you can use HTTP transport with Express:
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import express from "express";
+import { z } from "zod";
+
+// Create MCP server instance
+const server = new McpServer({
+  name: "sushi-restaurant-server",
+  version: "1.0.0",
+  description: "MCP Server for managing sushi restaurant data"
 });
+
+// Register your tools
+server.registerTool(
+  "getMenu",
+  {
+    title: "Get Menu",
+    description: "Get the sushi restaurant menu",
+    inputSchema: z.object({})
+  },
+  async ({}): Promise<CallToolResult> => {
+    const menu = [
+      { id: 1, name: "California Roll", price: 8.99 },
+      { id: 2, name: "Spicy Tuna Roll", price: 9.99 },
+      { id: 3, name: "Salmon Nigiri", price: 4.99 }
+    ];
+    return {
+      content: [{ type: "text", text: JSON.stringify(menu) }]
+    };
+  }
+);
+
+// Setup Express with MCP
+const app = createMcpExpressApp();
+app.use(express.json());
+
+// MCP endpoint
+app.use("/", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport();
+  await transport.handleRequest(req, res, req.body);
+  await server.connect(transport);
+  return;
+});
+
+// Start server
+const PORT = 3001;
+app.listen(PORT, () => {
+  console.log(`Sushi restaurant server is running on port ${PORT}`);
+  console.log(`MCP endpoint available at http://localhost:${PORT}`);
+});
+```
+
+**package.json scripts for development:**
+
+```json
+{
+  "scripts": {
+    "build": "rimraf dist && npx tsc",
+    "prestart": "npm run build",
+    "start": "node dist/index.js",
+    "predev": "npm run build",
+    "dev": "concurrently \"npx tsc -w\" \"nodemon dist/index.js\""
+  }
+}
+```
+
+**Required dependencies:**
+
+```powershell
+npm install express
+npm install -D @types/express concurrently nodemon rimraf
 ```
 
 ---
@@ -406,16 +514,20 @@ export function getDB() {
 ```typescript
 import { getDB } from "./database.js";
 import { ObjectId } from "mongodb";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-server.addTool({
-  name: "search_sushi",
-  description: "Search for sushi items by name or category",
-  inputSchema: z.object({
-    query: z.string(),
-    category: z.enum(["rolls", "sashimi", "nigiri", "all"]).default("all"),
-    maxPrice: z.number().optional()
-  }),
-  handler: async ({ query, category, maxPrice }) => {
+server.registerTool(
+  "search_sushi",
+  {
+    title: "Search Sushi",
+    description: "Search for sushi items by name or category",
+    inputSchema: z.object({
+      query: z.string(),
+      category: z.enum(["rolls", "sashimi", "nigiri", "all"]).default("all"),
+      maxPrice: z.number().optional()
+    })
+  },
+  async ({ query, category, maxPrice }): Promise<CallToolResult> => {
     const db = getDB();
     const collection = db.collection("sushi");
     
@@ -443,7 +555,7 @@ server.addTool({
       }]
     };
   }
-});
+);
 ```
 
 ### Authentication and Security
@@ -452,15 +564,19 @@ server.addTool({
 
 ```typescript
 import jwt from "jsonwebtoken";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-server.addTool({
-  name: "get_user_orders",
-  description: "Get orders for a specific user (requires authentication)",
-  inputSchema: z.object({
-    token: z.string(), // JWT token
-    limit: z.number().default(10)
-  }),
-  handler: async ({ token, limit }) => {
+server.registerTool(
+  "get_user_orders",
+  {
+    title: "Get User Orders",
+    description: "Get orders for a specific user (requires authentication)",
+    inputSchema: z.object({
+      token: z.string(), // JWT token
+      limit: z.number().default(10)
+    })
+  },
+  async ({ token, limit }): Promise<CallToolResult> => {
     try {
       // Verify JWT token
       const decoded = jwt.verify(token, process.env.JWT_SECRET!);
@@ -489,7 +605,7 @@ server.addTool({
       };
     }
   }
-});
+);
 ```
 
 ---
@@ -530,33 +646,30 @@ server.addResource({
 MCP supports notifications and progress updates:
 
 ```typescript
-server.addTool({
-  name: "process_large_order",
-  description: "Process a catering order (with progress updates)",
-  inputSchema: z.object({
-    items: z.array(z.object({
-      sushi_id: z.string(),
-      quantity: z.number()
-    }))
-  }),
-  handler: async ({ items }, { progressToken }) => {
+server.registerTool(
+  "process_large_order",
+  {
+    title: "Process Large Order",
+    description: "Process a catering order (with progress updates)",
+    inputSchema: z.object({
+      items: z.array(z.object({
+        sushi_id: z.string(),
+        quantity: z.number()
+      }))
+    })
+  },
+  async ({ items }): Promise<CallToolResult> => {
     for (let i = 0; i < items.length; i++) {
       // Process each item
       await processItem(items[i]);
       
-      // Send progress notification
-      if (progressToken) {
-        await server.sendProgress({
-          progressToken,
-          progress: i + 1,
-          total: items.length
-        });
-      }
+      // Progress notifications can be sent if transport supports it
+      console.error(`Processing item ${i + 1} of ${items.length}`);
     }
     
     return { content: [{ type: "text", text: "Order processed" }] };
   }
-});
+);
 ```
 
 ### 3. Error Handling
@@ -564,14 +677,17 @@ server.addTool({
 Always provide clear error messages:
 
 ```typescript
-server.addTool({
-  name: "delete_sushi_item",
-  description: "Delete a sushi item from the menu (admin only)",
-  inputSchema: z.object({
-    sushi_id: z.string(),
-    admin_token: z.string()
-  }),
-  handler: async ({ sushi_id, admin_token }) => {
+server.registerTool(
+  "delete_sushi_item",
+  {
+    title: "Delete Sushi Item",
+    description: "Delete a sushi item from the menu (admin only)",
+    inputSchema: z.object({
+      sushi_id: z.string(),
+      admin_token: z.string()
+    })
+  },
+  async ({ sushi_id, admin_token }): Promise<CallToolResult> => {
     try {
       // Validate admin token
       const isAdmin = await validateAdminToken(admin_token);
@@ -616,7 +732,7 @@ server.addTool({
       };
     }
   }
-});
+);
 ```
 
 ---
@@ -646,11 +762,12 @@ This opens a web interface where you can:
 **File: `tests/server.test.ts`**
 
 ```typescript
-import { MCPServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { describe, it, expect } from "vitest";
 
 describe("Sushi MCP Server", () => {
   it("should list menu items", async () => {
+    // Test your server's tools
     const result = await server.callTool("get_menu", {});
     expect(result.content[0].text).toContain("California Roll");
   });
@@ -825,17 +942,23 @@ Would you like to see a specific category or place an order?
 
 ```typescript
 // In src/index.ts, add logging
-server.addTool({
-  name: "get_menu",
-  description: "Get the sushi restaurant menu",
-  inputSchema: z.object({}),
-  handler: async () => {
+server.registerTool(
+  "get_menu",
+  {
+    title: "Get Menu",
+    description: "Get the sushi restaurant menu",
+    inputSchema: z.object({})
+  },
+  async ({}): Promise<CallToolResult> => {
     // Add this line
     console.error("[MCP] get_menu tool called");
     
     // ... rest of handler
+    return {
+      content: [{ type: "text", text: JSON.stringify(menu) }]
+    };
   }
-});
+);
 ```
 
 **View logs in real-time:**
@@ -1011,11 +1134,14 @@ Your order ID is #12345. Estimated ready time: 15 minutes."
 // Cache frequently accessed data
 const menuCache = new Map<string, any>();
 
-server.addTool({
-  name: "get_menu_cached",
-  description: "Get menu with caching",
-  inputSchema: z.object({}),
-  handler: async () => {
+server.registerTool(
+  "get_menu_cached",
+  {
+    title: "Get Menu (Cached)",
+    description: "Get menu with caching",
+    inputSchema: z.object({})
+  },
+  async ({}): Promise<CallToolResult> => {
     const cacheKey = "menu_all";
     
     if (menuCache.has(cacheKey)) {
@@ -1031,7 +1157,7 @@ server.addTool({
     
     return { content: [{ type: "text", text: serialized }] };
   }
-});
+);
 ```
 
 ### 3. Cost Management
@@ -1045,14 +1171,17 @@ Agent interactions can consume many tokens. Optimize by:
 ```typescript
 const MAX_RESULTS = 20; // Limit search results
 
-server.addTool({
-  name: "search_sushi_limited",
-  description: `Search sushi (max ${MAX_RESULTS} results)`,
-  inputSchema: z.object({
-    query: z.string(),
-    limit: z.number().max(MAX_RESULTS).default(10)
-  }),
-  handler: async ({ query, limit }) => {
+server.registerTool(
+  "search_sushi_limited",
+  {
+    title: "Search Sushi (Limited)",
+    description: `Search sushi (max ${MAX_RESULTS} results)`,
+    inputSchema: z.object({
+      query: z.string(),
+      limit: z.number().max(MAX_RESULTS).default(10)
+    })
+  },
+  async ({ query, limit }): Promise<CallToolResult> => {
     const results = await db.collection("sushi")
       .find({ $text: { $search: query } })
       .limit(limit)
@@ -1069,7 +1198,7 @@ server.addTool({
       }]
     };
   }
-});
+);
 ```
 
 ---
@@ -1220,6 +1349,115 @@ Configure your MCP server to work with either:
 - GitHub repository with code
 - Video demo showing agent interactions
 - Brief report (500 words) on challenges and learnings
+
+---
+
+## Quick Reference: MCP SDK vs Server Package
+
+### Package Comparison
+
+| Feature | `@modelcontextprotocol/sdk` (This Guide) | `@modelcontextprotocol/server` (Legacy) |
+|---------|------------------------------------------|------------------------------------------|
+| **Installation** | `npm install @modelcontextprotocol/sdk @cfworker/json-schema` | `npm install @modelcontextprotocol/server` |
+| **Server Class** | `McpServer` (lowercase 'cp') | `MCPServer` (uppercase 'CP') |
+| **Import Path** | `from "@modelcontextprotocol/sdk/server/mcp.js"` | `from "@modelcontextprotocol/server"` |
+| **Tool Registration** | `server.registerTool(name, schema, handler)` | `server.addTool({ name, schema, handler })` |
+| **File Extensions** | Requires `.js` extensions in imports (ESM) | No extensions needed |
+| **Transport** | Multiple built-in (stdio, HTTP, Express) | Separate imports required |
+| **Express Integration** | `createMcpExpressApp()` helper | Manual setup |
+| **Dependencies** | Includes `@cfworker/json-schema` | Self-contained |
+
+### Common Imports (SDK)
+
+```typescript
+// Core server
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+// Stdio transport (for VS Code, Claude Desktop)
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+// HTTP transport (for remote/web servers)
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+// Express integration
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+
+// Schema validation
+import { z } from "zod";
+```
+
+### Tool Registration Pattern (SDK)
+
+```typescript
+server.registerTool(
+  "tool_name",                    // Tool identifier
+  {
+    title: "Tool Title",          // Human-readable title
+    description: "What it does",  // Detailed description for AI
+    inputSchema: z.object({       // Zod schema for inputs
+      param: z.string()
+    })
+  },
+  async (params): Promise<CallToolResult> => {
+    // Handler implementation
+    return {
+      content: [{ 
+        type: "text", 
+        text: JSON.stringify(result) 
+      }]
+    };
+  }
+);
+```
+
+### Transport Setup Examples
+
+**Stdio (Local Development):**
+```typescript
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+**HTTP/Express (Production):**
+```typescript
+const app = createMcpExpressApp();
+app.use(express.json());
+app.use("/", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport();
+  await transport.handleRequest(req, res, req.body);
+  await server.connect(transport);
+});
+app.listen(3001);
+```
+
+### TypeScript Configuration
+
+```json
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true
+  }
+}
+```
+
+### Package.json Scripts
+
+```json
+{
+  "type": "module",
+  "scripts": {
+    "build": "rimraf dist && npx tsc",
+    "start": "node dist/index.js",
+    "dev": "concurrently \"npx tsc -w\" \"nodemon dist/index.js\""
+  }
+}
+```
 
 ---
 
